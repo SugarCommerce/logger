@@ -73,8 +73,12 @@ line in a message is written as `\n`, so a name or an address somebody typed
 cannot forge an entry of its own.
 
 Context keys named like secrets -- `password`, `secret`, `token`, `api_key`,
-`authorization`, `cookie`, `card_number`, `cvc`, `cvv`, in any case and at
-any depth -- are written as `[redacted]`. Pass your own list as `redact`, or
+`private_key`, `authorization`, `cookie`, `card_number`, `cvc`, `cvv`, in any
+case and at any depth -- are written as `[redacted]`. Each is matched as a
+word of the key, so `client_secret`, `access_token`, `stripe_secret_key` and
+`webhookSecret` are redacted too, while `passenger` is not. A value that is a
+Stripe secret or restricted key or a webhook signing secret is redacted
+whatever its key. Pass your own list as `redact` (matched the same way), or
 an empty one to keep everything.
 
 ## Options
@@ -127,7 +131,7 @@ loaded first.
 
 Answers that changed:
 
-* Context keys named like secrets are written as `[redacted]`. Pass `'redact' => array()` for the old behaviour.
+* Context keys named like secrets -- `client_secret` and `access_token` as well as `secret` and `token` -- are written as `[redacted]`. Pass `'redact' => array()` for the old behaviour.
 * A new line in a message is written as `\n`; it started a new line, which read as a new entry.
 * Context that is not valid UTF-8 is written with the bad bytes replaced. It was written as nothing at all.
 * The folder, `.htaccess` and `index.php` are made on the first write, not when the logger is built, so a logger that never writes leaves nothing behind. The `.htaccess` says `Require all denied` for Apache 2.4 as well as `Deny from all` for 2.2.

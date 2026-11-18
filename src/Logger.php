@@ -52,8 +52,18 @@ class Logger {
 	/**
 	 * Context keys written as `[redacted]`, whatever their case and however
 	 * deep: things a log has no business keeping.
+	 *
+	 * Each is matched as a word of the key, not the whole key: `secret`
+	 * catches `client_secret`, `webhookSecret` and `stripe_secret_key`, and
+	 * `token` catches `access_token`, while `passenger` and `tokenizer` stay.
 	 */
-	public const REDACT = array( 'password', 'pass', 'secret', 'token', 'api_key', 'apikey', 'authorization', 'cookie', 'card_number', 'cvc', 'cvv' );
+	public const REDACT = array( 'password', 'pass', 'passphrase', 'secret', 'token', 'api_key', 'apikey', 'private_key', 'authorization', 'cookie', 'card_number', 'cvc', 'cvv' );
+
+	/**
+	 * Values written as `[redacted]` whatever their key: live and test
+	 * Stripe secret and restricted keys and webhook signing secrets.
+	 */
+	private const SECRET_VALUE = '/\b(?:(?:sk|rk)_(?:live|test)_|whsec_)[A-Za-z0-9]+/';
 
 	/**
 	 * The plugin's name, as a key.
@@ -98,6 +108,14 @@ class Logger {
 	private array $redact;
 
 	/**
+	 * The words of each redacted key, matched against the words of a
+	 * context key.
+	 *
+	 * @var array<int, string[]>
+	 */
+	private array $redact_words;
+
+	/**
 	 * Whether the folder has been made and protected.
 	 *
 	 * @var bool
@@ -138,6 +156,8 @@ class Logger {
 		$this->max_size = max( 0, (int) ( $options['max_size'] ?? self::DEFAULT_MAX_SIZE ) );
 		$this->level    = self::level( (string) ( $options['level'] ?? 'DEBUG' ) );
 		$this->redact   = array_map( 'strtolower', array_map( 'strval', (array) ( $options['redact'] ?? self::REDACT ) ) );
+
+		$this->redact_words = array_values( array_filter( array_map( array( self::class, 'words' ), $this->redact ) ) );
 		$this->log_file = $this->path( isset( $options['log_file'] ) ? (string) $options['log_file'] : '' );
 	}
 
@@ -517,7 +537,8 @@ class Logger {
 	}
 
 	/**
-	 * Context with the keys nobody should keep written as `[redacted]`.
+	 * Context with the keys nobody should keep written as `[redacted]`, and
+	 * any value that is plainly a secret key.
 	 *
 	 * @param array $context The context.
 	 *
@@ -529,13 +550,54 @@ class Logger {
 		}
 
 		foreach ( $context as $key => $value ) {
-			if ( in_array( strtolower( (string) $key ), $this->redact, true ) ) {
+			if ( $this->is_redacted( (string) $key ) ) {
 				$context[ $key ] = '[redacted]';
 			} elseif ( is_array( $value ) ) {
 				$context[ $key ] = $this->redacted( $value );
+			} elseif ( is_string( $value ) ) {
+				$context[ $key ] = (string) preg_replace( self::SECRET_VALUE, '[redacted]', $value );
 			}
 		}
 
 		return $context;
+	}
+
+	/**
+	 * Whether a context key names something redacted: one of the redacted
+	 * keys appears among its words, in order.
+	 *
+	 * @param string $key A context key.
+	 *
+	 * @return bool
+	 */
+	private function is_redacted( string $key ): bool {
+		$words = self::words( $key );
+		$count = count( $words );
+
+		foreach ( $this->redact_words as $redact ) {
+			$length = count( $redact );
+
+			for ( $i = 0; $i + $length <= $count; $i++ ) {
+				if ( array_slice( $words, $i, $length ) === $redact ) {
+					return true;
+				}
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * A key's words, lower case: split at anything not a letter or digit
+	 * and where camelCase turns upper.
+	 *
+	 * @param string $key A key.
+	 *
+	 * @return string[]
+	 */
+	private static function words( string $key ): array {
+		$key = (string) preg_replace( '/([a-z0-9])([A-Z])/', '$1_$2', $key );
+
+		return array_values( array_filter( (array) preg_split( '/[^a-z0-9]+/', strtolower( $key ) ), 'strlen' ) );
 	}
 }

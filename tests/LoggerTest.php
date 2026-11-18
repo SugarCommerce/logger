@@ -219,6 +219,54 @@ final class LoggerTest extends TestCase {
 	}
 
 	/**
+	 * A redacted key is matched as a word of the context key, so the
+	 * secrets payment and OAuth code actually logs are left out -- and a
+	 * value shaped like a Stripe secret is left out whatever its key.
+	 *
+	 * @return void
+	 */
+	public function test_redaction_matches_words_of_the_key(): void {
+		$log  = $this->logger();
+		$key  = 'sk_' . 'live_' . str_repeat( 'a1B2', 6 );
+		$hook = 'whsec_' . str_repeat( 'Z9', 8 );
+
+		$log->info(
+			'Connect',
+			array(
+				'client_secret'     => 'cs-one',
+				'access_token'      => 'at-two',
+				'refreshToken'      => 'rt-three',
+				'secret_key'        => 'sk-four',
+				'stripe_secret_key' => 'sk-five',
+				'X-Api-Key'         => 'ak-six',
+				'stripe_key'        => $key,
+				'settings'          => array( 'webhook' => $hook ),
+				'note'              => 'used ' . $key . ' today',
+				'passenger'         => 'Ada',
+				'tokenizer'         => 'wordpiece',
+				'stripe_customer'   => 'cus_123',
+			)
+		);
+
+		$entry = $log->get_entries()[0];
+		foreach ( array( 'cs-one', 'at-two', 'rt-three', 'sk-four', 'sk-five', 'ak-six', $key, $hook ) as $secret ) {
+			$this->assertStringNotContainsString( $secret, $entry );
+		}
+		$this->assertStringContainsString( '"client_secret":"[redacted]"', $entry );
+		$this->assertStringContainsString( '"note":"used [redacted] today"', $entry );
+		$this->assertStringContainsString( '"passenger":"Ada"', $entry );
+		$this->assertStringContainsString( '"tokenizer":"wordpiece"', $entry );
+		$this->assertStringContainsString( '"stripe_customer":"cus_123"', $entry );
+
+		// A list of one's own is matched the same way.
+		$own = $this->logger( array( 'redact' => array( 'iban' ) ) );
+		$own->clear();
+		$own->info( 'Payout', array( 'customer_iban' => 'GB00', 'token' => 'kept' ) );
+		$this->assertStringNotContainsString( 'GB00', $own->get_entries()[0] );
+		$this->assertStringContainsString( '"token":"kept"', $own->get_entries()[0] );
+	}
+
+	/**
 	 * Past the size limit the log moves to .1, replacing the older one;
 	 * clear() removes both.
 	 *
