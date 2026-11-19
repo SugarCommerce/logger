@@ -15,6 +15,10 @@ if ( ! defined( 'ABSPATH' ) ) {
 	define( 'ABSPATH', dirname( __DIR__ ) . '/' );
 }
 
+if ( ! defined( 'DAY_IN_SECONDS' ) ) {
+	define( 'DAY_IN_SECONDS', 86400 );
+}
+
 require_once dirname( __DIR__ ) . '/vendor/autoload.php';
 
 $GLOBALS['lg_uploads'] = sys_get_temp_dir() . '/sc-logger-' . getmypid() . '-' . bin2hex( random_bytes( 4 ) );

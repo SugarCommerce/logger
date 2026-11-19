@@ -304,4 +304,30 @@ final class LoggerTest extends TestCase {
 		$this->assertFileDoesNotExist( $log->get_file() . '.1' );
 		$this->assertCount( 5, $log->get_entries() );
 	}
+
+	/**
+	 * prune() takes out what is older than the days given, from both files,
+	 * keeps a line with no time, and removes a previous file left empty.
+	 *
+	 * @return void
+	 */
+	public function test_prune(): void {
+		$log  = $this->logger( array( 'max_size' => 0 ) );
+		$at   = static fn( int $days_ago ): string => gmdate( 'c', time() - $days_ago * DAY_IN_SECONDS - 60 );
+		$file = $log->get_file();
+
+		$log->info( 'Makes the folder' );
+
+		file_put_contents( $file, "[{$at( 40 )}] INFO: Old\n[{$at( 30 )}] DEBUG: Thirty\nno time at all\n[{$at( 29 )}] INFO: Recent\n[{$at( 0 )}] ERROR: Today\n" );
+		file_put_contents( $file . '.1', "[{$at( 90 )}] INFO: Very old\n[{$at( 31 )}] INFO: Also old\n" );
+
+		$this->assertSame( 0, $log->prune( 0 ), 'Below one day, nothing goes.' );
+		$this->assertSame( 4, $log->prune( 30 ) );
+		$this->assertSame( "no time at all\n[{$at( 29 )}] INFO: Recent\n[{$at( 0 )}] ERROR: Today\n", (string) file_get_contents( $file ) );
+		$this->assertFileDoesNotExist( $file . '.1' );
+		$this->assertSame( 0, $log->prune( 30 ), 'Nothing more to take.' );
+
+		$this->assertSame( 1, $log->prune( 1 ) );
+		$this->assertSame( array( 'no time at all', "[{$at( 0 )}] ERROR: Today" ), $log->get_entries() );
+	}
 }

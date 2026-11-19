@@ -103,12 +103,16 @@ $log->get_entries( 50 );   // the last 50 lines
 $log->get_contents();      // the whole file
 $log->get_file();          // where it is
 $log->clear();             // the file and its previous one
+$log->prune( 30 );         // entries 30 days old or more, from both; returns how many
 $log->writes( 'debug' );   // whether a debug entry would be written
 $log->set_enabled( false );
 ```
 
 Past `max_size` the log moves to `{file}.1`, replacing the one before, so
-there are never more than two.
+there are never more than two. Rotation keeps the size down; `prune()` keeps
+the age down -- run it from a daily event for a log that holds what customers
+typed. A line that does not start with a time is kept, and a previous file
+left empty is removed.
 
 ## Moving from arraypress/wp-logger
 
@@ -138,7 +142,7 @@ Answers that changed:
 * A log file name without a path is passed through `sanitize_file_name()`.
 
 New: the `level` and `redact` options, `get_entries()`, `get_name()`,
-`get_level()`, `set_enabled()` and `writes()`.
+`get_level()`, `set_enabled()`, `writes()` and `prune()`.
 
 ## Requirements
 

@@ -334,6 +334,103 @@ class Logger {
 	}
 
 	/**
+	 * Remove the entries older than a number of days, from the log and its
+	 * previous file.
+	 *
+	 * For a log that holds what customers typed: kept for as long as it is
+	 * useful, not for as long as nobody happens to clear it. Rotation keeps
+	 * the size down; this keeps the age down. A previous file left with
+	 * nothing is removed. A line that does not start with a time is kept.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @param int $days Entries this many days old or more go. Below one,
+	 *                  nothing is removed.
+	 *
+	 * @return int How many entries were removed.
+	 */
+	public function prune( int $days ): int {
+		if ( $days < 1 ) {
+			return 0;
+		}
+
+		$before  = time() - $days * DAY_IN_SECONDS;
+		$removed = 0;
+
+		foreach ( array( $this->log_file . '.1', $this->log_file ) as $file ) {
+			$removed += self::prune_file( $file, $before );
+		}
+
+		return $removed;
+	}
+
+	/**
+	 * Remove the entries written before a moment from one file, under a lock.
+	 *
+	 * @param string $file   The file.
+	 * @param int    $before The moment, as a timestamp.
+	 *
+	 * @return int How many entries were removed.
+	 */
+	private static function prune_file( string $file, int $before ): int {
+		if ( ! is_file( $file ) || ! is_writable( $file ) ) {
+			return 0;
+		}
+
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fopen -- read and rewritten under one lock, which WP_Filesystem cannot do.
+		$handle = fopen( $file, 'c+' );
+
+		if ( false === $handle ) {
+			return 0;
+		}
+
+		$removed = 0;
+
+		try {
+			if ( ! flock( $handle, LOCK_EX ) ) {
+				return 0;
+			}
+
+			$kept = '';
+
+			// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fread -- see above.
+			while ( false !== ( $line = fgets( $handle ) ) ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.FoundInWhileCondition -- line by line.
+				if ( 1 === preg_match( '/^\[([^\]]+)\]/', $line, $time ) ) {
+					$at = strtotime( $time[1] );
+
+					if ( false !== $at && $at < $before ) {
+						++$removed;
+						continue;
+					}
+				}
+
+				$kept .= $line;
+			}
+
+			if ( 0 === $removed ) {
+				return 0;
+			}
+
+			ftruncate( $handle, 0 );
+			rewind( $handle );
+			// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fwrite -- see above.
+			fwrite( $handle, $kept );
+			fflush( $handle );
+			flock( $handle, LOCK_UN );
+		} finally {
+			// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- see above.
+			fclose( $handle );
+		}
+
+		if ( '' === $kept && str_ends_with( $file, '.1' ) ) {
+			// phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink -- the plugin's own log, emptied.
+			unlink( $file );
+		}
+
+		return $removed;
+	}
+
+	/**
 	 * What the log holds.
 	 *
 	 * @since 1.0.0
