@@ -78,7 +78,8 @@ case and at any depth -- are written as `[redacted]`. Each is matched as a
 word of the key, so `client_secret`, `access_token`, `stripe_secret_key` and
 `webhookSecret` are redacted too, while `passenger` is not. A value that is a
 Stripe secret or restricted key or a webhook signing secret is redacted
-whatever its key. Pass your own list as `redact` (matched the same way), or
+whatever its key, and in the message itself. A plain object in the context
+(a decoded answer, a row) is redacted by its properties as an array is. Pass your own list as `redact` (matched the same way), or
 an empty one to keep everything.
 
 ## Options
@@ -114,35 +115,25 @@ the age down -- run it from a daily event for a log that holds what customers
 typed. A line that does not start with a time is kept, and a previous file
 left empty is removed.
 
-## Moving from arraypress/wp-logger
+## Security
 
-| Was | Now |
-|---|---|
-| `ArrayPress\Logger\Logger` | `SugarCommerce\Logger\Logger` |
-| `ArrayPress\Logger\Registry::get_instance()->register( $name, $options )` | `Registry::register( $name, $options )` |
-| `Registry::get_instance()->get()`, `has()`, `remove()` | `Registry::get()`, `has()`, `remove()` |
-| `Registry::get_instance()->get_all()`, `get_names()`, `count()` | `Registry::all()`, `names()`, `count()` |
-| `Registry::get_instance()->clear()`, `Registry::reset()` | `Registry::reset()` |
-| `register_logger( $name, $options )` | `Registry::register( $name, $options )` |
-| `get_logger( $name )` | `Registry::get( $name )` |
-| `has_logger( $name )` | `Registry::has( $name )` |
-| `remove_logger( $name )` | `Registry::remove( $name )` |
-| `get_all_loggers()` | `Registry::all()` |
+* Secrets in the log: secret-named context keys at any depth, the
+  properties of plain objects, and Stripe or webhook secrets anywhere in a
+  value or in the message are written as `[redacted]`.
+* Forged entries: a new line in a message is written as `\n`, so text a
+  customer typed cannot start an entry of its own.
+* A readable log: it lives in uploads under a name salted per site
+  (`wp_hash()`), beside an `.htaccess` that denies Apache 2.2 and 2.4 and an
+  empty `index.php`.
+* A log that grows for ever: it rotates past `max_size`, and `prune()` drops
+  entries past an age.
 
-The global functions are gone: a global function is the one thing Strauss
-cannot prefix, so two plugins bundling different copies shared whichever
-loaded first.
+## Layout
 
-Answers that changed:
-
-* Context keys named like secrets -- `client_secret` and `access_token` as well as `secret` and `token` -- are written as `[redacted]`. Pass `'redact' => array()` for the old behaviour.
-* A new line in a message is written as `\n`; it started a new line, which read as a new entry.
-* Context that is not valid UTF-8 is written with the bad bytes replaced. It was written as nothing at all.
-* The folder, `.htaccess` and `index.php` are made on the first write, not when the logger is built, so a logger that never writes leaves nothing behind. The `.htaccess` says `Require all denied` for Apache 2.4 as well as `Deny from all` for 2.2.
-* A log file name without a path is passed through `sanitize_file_name()`.
-
-New: the `level` and `redact` options, `get_entries()`, `get_name()`,
-`get_level()`, `set_enabled()`, `writes()` and `prune()`.
+* `src/Logger.php`: one log and its levels; `src/Traits/Logger/Files.php` is
+  the file (path, guard files, rotation, pruning, reading back) and
+  `Redaction.php` what is kept out of it.
+* `src/Registry.php`: one logger a name.
 
 ## Requirements
 

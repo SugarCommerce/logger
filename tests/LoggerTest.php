@@ -267,6 +267,30 @@ final class LoggerTest extends TestCase {
 	}
 
 	/**
+	 * A secret in the message itself is redacted, as one in the context
+	 * is: an exception's message is the usual way one gets there. So is a
+	 * secret-named property of an object in the context.
+	 *
+	 * @return void
+	 */
+	public function test_secrets_in_the_message_and_in_objects_are_redacted(): void {
+		$log  = $this->logger();
+		$key  = 'sk_' . 'test_' . str_repeat( 'Q7w', 8 );
+		$hook = 'whsec_' . str_repeat( 'Y8', 8 );
+
+		$log->exception( new \RuntimeException( 'Stripe refused ' . $key ) );
+		$log->info( "Webhook {$hook} saved", array( 'endpoint' => (object) array( 'url' => 'https://example.test/hook', 'secret' => 'plain-words' ) ) );
+
+		$entries = implode( "\n", $log->get_entries() );
+
+		$this->assertStringNotContainsString( $key, $entries );
+		$this->assertStringNotContainsString( $hook, $entries );
+		$this->assertStringNotContainsString( 'plain-words', $entries );
+		$this->assertStringContainsString( 'Stripe refused [redacted]', $entries );
+		$this->assertStringContainsString( '"endpoint":{"url":"https://example.test/hook","secret":"[redacted]"}', $entries );
+	}
+
+	/**
 	 * Past the size limit the log moves to .1, replacing the older one;
 	 * clear() removes both.
 	 *
